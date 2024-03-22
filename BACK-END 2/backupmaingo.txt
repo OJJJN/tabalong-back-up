@@ -1,0 +1,375 @@
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/MakMoinee/go-mith/pkg/mysql"
+	_ "github.com/go-sql-driver/mysql"
+)
+
+var broadcast = make(chan Hs_data) // broadcast channel
+var list = []Hs_data{}             // global list of Hs_datas
+var listMutex = &sync.RWMutex{}
+
+func handleConnections(w http.ResponseWriter, r *http.Request) {
+	var msg Hs_data
+	// Decode the incoming request into the Hs_datas struct
+	err := json.NewDecoder(r.Body).Decode(&msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Send the newly received message to the broadcast channel
+	broadcast <- msg
+}
+
+func handleGetHs_data(w http.ResponseWriter, _ *http.Request) {
+	listMutex.RLock()
+	defer listMutex.RUnlock()
+
+	// Create a new slice to store selected fields
+	selectedFields := make([]SelectedFields, len(list))
+
+	// Iterate over each Hs_data in the list and extract selected fields
+	for i, hsData := range list {
+		// Create the initial SelectedFields object
+		selectedField := SelectedFields{
+			IsTransaksi:    "2",
+			DeviceID:       "3",
+			WimKode:        "WIM1",
+			KodeUppkb:      "TBG",
+			NoKendaraan:    hsData.License_Plate,
+			TglPenimbangan: hsData.HSData_DT,
+			WimBerat:       hsData.Gross_Load,
+			WimKec:         hsData.Speed,
+			WimLebar:       hsData.Veh_Width,
+			WimPanjang:     hsData.Veh_Length,
+			WimTinggi:      hsData.Veh_Heigth,
+		}
+
+		selectedFields[i] = selectedField
+	}
+
+	// Convert the selected fields slice to JSON
+	jsonList, err := json.Marshal(selectedFields)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Set the content type to application/json
+	w.Header().Set("Content-Type", "application/json")
+
+	// Write the json to the response body
+	w.Write(jsonList)
+}
+
+func handleMessages() {
+	for msg := range broadcast {
+		// Log the message
+		log.Printf("Received message: %+v\n", msg)
+	}
+}
+
+func main() {
+	flag.Parse()
+
+	log.Println("Starting the service ....")
+
+	ticker := time.NewTicker(1 * time.Second) // fires every 1 seconds
+	defer ticker.Stop()
+
+	// Start listening for incoming chat messages
+	go handleMessages()
+
+	// Configure routes
+	http.HandleFunc("/hs_data", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handleConnections(w, r)
+		} else if r.Method == http.MethodGet {
+			handleGetHs_data(w, r)
+		} else {
+			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		}
+	})
+
+	list = pushMysqlData()
+	go func() {
+		for range ticker.C {
+			newList := pushMysqlData()
+			listMutex.Lock()
+			list = newList
+			listMutex.Unlock()
+
+			fmt.Println("Received new data from mysql")
+		}
+	}()
+
+	http.ListenAndServe("192.168.1.123:8080", nil)
+}
+
+func pushMysqlData() []Hs_data {
+	// Define the struct
+	newMysql := mysql.NewGoMithMysql("highspeednew", "localhost", "root", "wanji168", "mysql") // replace CorrectFunctionName with the correct function name
+	newMysql.SetConnectionString("root:wanji168@tcp(localhost:3306)/highspeednew", 1)
+
+	db := newMysql.GetDBConnection()
+	result, err := db.Query("SELECT * FROM hs_data ORDER BY HSData_Id DESC LIMIT 1")
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	defer result.Close()
+
+	list := []Hs_data{}
+
+	for result.Next() {
+		newHs_data := Hs_data{}
+		err := result.Scan(
+			&hsData.HSData_Id,
+			&hsData.Lane_Id,
+			&hsData.HSData_DT,
+			&hsData.Oper_Direc,
+			&hsData.Axle_Num,
+			&hsData.AxleGrp_Num,
+			&hsData.Gross_Load,
+			&hsData.Veh_Type,
+			&hsData.AxleWt1,
+			&hsData.AxleWt2,
+			&hsData.AxleWt3,
+			&hsData.AxleWt4,
+			&hsData.AxleWt5,
+			&hsData.AxleWt6,
+			&hsData.AxleWt7,
+			&hsData.AxleWt8,
+			&hsData.AxleWt9,
+			&hsData.AxleWt10,
+			&hsData.AxleWt11,
+			&hsData.AxleWt12,
+			&hsData.AxleWt13,
+			&hsData.AxleWt14,
+			&hsData.AxleWt15,
+			&hsData.AxleGrpWt1,
+			&hsData.AxleGrpWt2,
+			&hsData.AxleGrpWt3,
+			&hsData.AxleGrpWt4,
+			&hsData.AxleGrpWt5,
+			&hsData.AxleGrpWt6,
+			&hsData.AxleGrpWt7,
+			&hsData.AxleGrpWt8,
+			&hsData.AxleGrpWt9,
+			&hsData.AxleGrpWt10,
+			&hsData.AxleGrpWt11,
+			&hsData.AxleGrpWt12,
+			&hsData.AxleGrpWt13,
+			&hsData.AxleGrpWt14,
+			&hsData.AxleGrpWt15,
+			&hsData.AxleDis1,
+			&hsData.AxleDis2,
+			&hsData.AxleDis3,
+			&hsData.AxleDis4,
+			&hsData.AxleDis5,
+			&hsData.AxleDis6,
+			&hsData.AxleDis7,
+			&hsData.AxleDis8,
+			&hsData.AxleDis9,
+			&hsData.AxleDis10,
+			&hsData.AxleDis11,
+			&hsData.AxleDis12,
+			&hsData.AxleDis13,
+			&hsData.AxleDis14,
+			&hsData.Violation_Id,
+			&hsData.OverLoad_Sign,
+			&hsData.BeliefValue,
+			&hsData.Speed,
+			&hsData.Acceleration,
+			&hsData.Temperature,
+			&hsData.Veh_Length,
+			&hsData.Veh_Width,
+			&hsData.Veh_Heigth,
+			&hsData.QAT,
+			&hsData.License_Country,
+			&hsData.License_Plate,
+			&hsData.License_Plate_Color,
+			&hsData.AxleSpeed1,
+			&hsData.AxleSpeed2,
+			&hsData.AxleSpeed3,
+			&hsData.AxleSpeed4,
+			&hsData.AxleSpeed5,
+			&hsData.AxleSpeed6,
+			&hsData.AxleSpeed7,
+			&hsData.AxleSpeed8,
+			&hsData.AxleSpeed9,
+			&hsData.AxleSpeed10,
+			&hsData.AxleSpeed11,
+			&hsData.AxleSpeed12,
+			&hsData.AxleSpeed13,
+			&hsData.AxleSpeed14,
+			&hsData.AxleSpeed15,
+			&hsData.AxleGrpType1,
+			&hsData.AxleGrpType2,
+			&hsData.AxleGrpType3,
+			&hsData.AxleGrpType4,
+			&hsData.AxleGrpType5,
+			&hsData.AxleGrpType6,
+			&hsData.AxleGrpType7,
+			&hsData.AxleGrpType8,
+			&hsData.AxleGrpType9,
+			&hsData.AxleGrpType10,
+			&hsData.AxleGrpType11,
+			&hsData.AxleGrpType12,
+			&hsData.AxleGrpType13,
+			&hsData.AxleGrpType14,
+			&hsData.AxleGrpType15,
+			&hsData.PlayStart_Time,
+			&hsData.PlayEnd_Time,
+			&hsData.PlayChannel,
+			&hsData.Path_Video,
+			&hsData.ChuCheVal,
+			&hsData.OverrunAxle,
+			&hsData.Single_axle_Limitweight,
+		)
+		if err != nil {
+			log.Printf("Error: %v", err)
+			continue
+		}
+
+		list = append(list, newHs_data)
+		broadcast <- newHs_data
+	}
+
+	return list
+}
+
+
+
+modelsgo:
+
+package main
+
+import "database/sql"
+
+type Hs_data struct {
+	HSData_Id               int            `json:"HSData_Id"`
+	Lane_Id                 string         `json:"Lane_Id"`
+	HSData_DT               string         `json:"HSData_DT"`
+	Oper_Direc              string         `json:"Oper_Direc"`
+	Axle_Num                int            `json:"Axle_Num"`
+	AxleGrp_Num             int            `json:"AxleGrp_Num"`
+	Gross_Load              int            `json:"Gross_Load"`
+	Veh_Type                int            `json:"Veh_Type"`
+	AxleWt1                 int            `json:"AxleWt1"`
+	AxleWt2                 int            `json:"AxleWt2"`
+	AxleWt3                 int            `json:"AxleWt3"`
+	AxleWt4                 int            `json:"AxleWt4"`
+	AxleWt5                 int            `json:"AxleWt5"`
+	AxleWt6                 int            `json:"AxleWt6"`
+	AxleWt7                 int            `json:"AxleWt7"`
+	AxleWt8                 int            `json:"AxleWt8"`
+	AxleWt9                 sql.NullInt64  `json:"AxleWt9"`
+	AxleWt10                sql.NullInt64  `json:"AxleWt10"`
+	AxleWt11                sql.NullInt64  `json:"AxleWt11"`
+	AxleWt12                sql.NullInt64  `json:"AxleWt12"`
+	AxleWt13                sql.NullInt64  `json:"AxleWt13"`
+	AxleWt14                sql.NullInt64  `json:"AxleWt14"`
+	AxleWt15                sql.NullInt64  `json:"AxleWt15"`
+	AxleGrpWt1              int            `json:"AxleGrpWt1"`
+	AxleGrpWt2              int            `json:"AxleGrpWt2"`
+	AxleGrpWt3              int            `json:"AxleGrpWt3"`
+	AxleGrpWt4              int            `json:"AxleGrpWt4"`
+	AxleGrpWt5              int            `json:"AxleGrpWt5"`
+	AxleGrpWt6              int            `json:"AxleGrpWt6"`
+	AxleGrpWt7              int            `json:"AxleGrpWt7"`
+	AxleGrpWt8              int            `json:"AxleGrpWt8"`
+	AxleGrpWt9              sql.NullInt64  `json:"AxleGrpWt9"`
+	AxleGrpWt10             sql.NullInt64  `json:"AxleGrpWt10"`
+	AxleGrpWt11             sql.NullInt64  `json:"AxleGrpWt11"`
+	AxleGrpWt12             sql.NullInt64  `json:"AxleGrpWt12"`
+	AxleGrpWt13             sql.NullInt64  `json:"AxleGrpWt13"`
+	AxleGrpWt14             sql.NullInt64  `json:"AxleGrpWt14"`
+	AxleGrpWt15             sql.NullInt64  `json:"AxleGrpWt15"`
+	AxleDis1                int            `json:"AxleDis1"`
+	AxleDis2                int            `json:"AxleDis2"`
+	AxleDis3                int            `json:"AxleDis3"`
+	AxleDis4                int            `json:"AxleDis4"`
+	AxleDis5                int            `json:"AxleDis5"`
+	AxleDis6                int            `json:"AxleDis6"`
+	AxleDis7                int            `json:"AxleDis7"`
+	AxleDis8                sql.NullInt64  `json:"AxleDis8"`
+	AxleDis9                sql.NullInt64  `json:"AxleDis9"`
+	AxleDis10               sql.NullInt64  `json:"AxleDis10"`
+	AxleDis11               sql.NullInt64  `json:"AxleDis11"`
+	AxleDis12               sql.NullInt64  `json:"AxleDis12"`
+	AxleDis13               sql.NullInt64  `json:"AxleDis13"`
+	AxleDis14               sql.NullInt64  `json:"AxleDis14"`
+	Violation_Id            int            `json:"Violation_Id"`
+	OverLoad_Sign           int            `json:"OverLoad_Sign"`
+	BeliefValue             int            `json:"BeliefValue"`
+	Speed                   int            `json:"Speed"`
+	Acceleration            float64        `json:"Acceleration"`
+	Temperature             int            `json:"Temperature"`
+	Veh_Length              int            `json:"Veh_Length"`
+	Veh_Width               int            `json:"Veh_Width"`
+	Veh_Heigth              int            `json:"Veh_Heigth"`
+	QAT                     float64        `json:"QAT"`
+	License_Country         sql.NullString `json:"License_Country"`
+	License_Plate           string         `json:"License_Plate"`
+	License_Plate_Color     string         `json:"License_Plate_Color"`
+	AxleSpeed1              int            `json:"AxleSpeed1"`
+	AxleSpeed2              int            `json:"AxleSpeed2"`
+	AxleSpeed3              int            `json:"AxleSpeed3"`
+	AxleSpeed4              int            `json:"AxleSpeed4"`
+	AxleSpeed5              int            `json:"AxleSpeed5"`
+	AxleSpeed6              int            `json:"AxleSpeed6"`
+	AxleSpeed7              int            `json:"AxleSpeed7"`
+	AxleSpeed8              int            `json:"AxleSpeed8"`
+	AxleSpeed9              sql.NullInt64  `json:"AxleSpeed9"`
+	AxleSpeed10             sql.NullInt64  `json:"AxleSpeed10"`
+	AxleSpeed11             sql.NullInt64  `json:"AxleSpeed11"`
+	AxleSpeed12             sql.NullInt64  `json:"AxleSpeed12"`
+	AxleSpeed13             sql.NullInt64  `json:"AxleSpeed13"`
+	AxleSpeed14             sql.NullInt64  `json:"AxleSpeed14"`
+	AxleSpeed15             sql.NullInt64  `json:"AxleSpeed15"`
+	AxleGrpType1            int            `json:"AxleGrpType1"`
+	AxleGrpType2            int            `json:"AxleGrpType2"`
+	AxleGrpType3            int            `json:"AxleGrpType3"`
+	AxleGrpType4            int            `json:"AxleGrpType4"`
+	AxleGrpType5            int            `json:"AxleGrpType5"`
+	AxleGrpType6            int            `json:"AxleGrpType6"`
+	AxleGrpType7            int            `json:"AxleGrpType7"`
+	AxleGrpType8            int            `json:"AxleGrpType8"`
+	AxleGrpType9            sql.NullInt64  `json:"AxleGrpType9"`
+	AxleGrpType10           sql.NullInt64  `json:"AxleGrpType10"`
+	AxleGrpType11           sql.NullInt64  `json:"AxleGrpType11"`
+	AxleGrpType12           sql.NullInt64  `json:"AxleGrpType12"`
+	AxleGrpType13           sql.NullInt64  `json:"AxleGrpType13"`
+	AxleGrpType14           sql.NullInt64  `json:"AxleGrpType14"`
+	AxleGrpType15           sql.NullInt64  `json:"AxleGrpType15"`
+	PlayStart_Time          string         `json:"PlayStart_Time"`
+	PlayEnd_Time            string         `json:"PlayEnd_Time"`
+	PlayChannel             int            `json:"PlayChannel"`
+	Path_Video              string         `json:"Path_Video"`
+	ChuCheVal               int            `json:"ChuCheVal"`
+	OverrunAxle             sql.NullInt64  `json:"OverrunAxle"`
+	Single_axle_Limitweight sql.NullInt64  `json:"Single_axle_Limitweight"`
+}
+
+type SelectedFields struct {
+	IsTransaksi    string `json:"is_transaksi"`
+	DeviceID       string `json:"device_id"`
+	WimKode        string `json:"wim_kode"`
+	KodeUppkb      string `json:"kode_uppkb"`
+	NoKendaraan    string `json:"no_kendaraan"`
+	TglPenimbangan string `json:"tgl_penimbangan"`
+	WimBerat       int    `json:"wim_berat"`
+	WimKec         int    `json:"wim_kec"`
+	WimLebar       int    `json:"wim_lebar"`
+	WimPanjang     int    `json:"wim_panjang"`
+	WimTinggi      int    `json:"wim_tinggi"`
+}
